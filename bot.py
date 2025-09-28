@@ -1,7 +1,8 @@
 import telegram
 import os
+# تم استبدال Updater بـ Application لإصلاح مشكلة التشغيل (الخطأ الأخير)
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext # تم تعديل الاستيراد
 
 # 1. التكوين (Configuration)
 # يُفضل جلب التوكن من متغيرات البيئة لضمان الأمان
@@ -20,7 +21,7 @@ PRICES = {
 }
 MIN_WITHDRAWAL = 500
 
-# ----------------- الدوال الأساسية -----------------
+# ----------------- الدوال الأساسية (لم تتغير) -----------------
 
 def start(update: Update, context: CallbackContext) -> None:
     """معالج أمر /start: الترحيب وعرض القائمة الرئيسية."""
@@ -41,7 +42,6 @@ def start(update: Update, context: CallbackContext) -> None:
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # استخدام \n للسطر الجديد لحل مشكلة SyntaxError
     message_text = f"مرحباً بك! رصيدك الحالي هو: **{balance} د.ج**.\nاختر الخدمة التي تريدها:"
     
     update.message.reply_text(
@@ -98,7 +98,6 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         query.edit_message_text(
             "✅ تم تسجيل طلب السحب! سيتم التواصل معك قريباً على حسابك في تيليجرام لإتمام عملية الدفع."
         )
-        # **ملاحظة:** يجب أن يضيف هذا الجزء منطق لإبلاغك (كإدارة البوت) بطلب السحب.
 
     # ----------------- 3. منطق دعم العملاء والعودة -----------------
     elif data == 'support_contact':
@@ -117,27 +116,25 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         # إعادة توجيه إلى دالة start لإعادة عرض القائمة
         start(query, context)
 
-# ----------------- دالة التشغيل الرئيسية -----------------
+# ----------------- دالة التشغيل الرئيسية (معدلة لـ Application) -----------------
 
 def main() -> None:
-    """تشغيل البوت وبدء استلام الرسائل."""
+    """تشغيل البوت باستخدام الصيغة الحديثة لمكتبة python-telegram-bot (الإصدار 20+)."""
+    
     if not TOKEN:
         print("خطأ فادح: لم يتم العثور على توكن البوت في متغيرات البيئة.")
         return
 
-    updater = Updater(TOKEN)
-    dp = updater.dispatcher
+    # استخدام Application.builder() هي الطريقة الصحيحة للتشغيل الحديثة
+    application = Application.builder().token(TOKEN).build()
 
     # ربط المعالجات بالأوامر والأزرار
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CallbackQueryHandler(handle_callback))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(handle_callback))
 
-    # بدء عملية الاستطلاع
-    updater.start_polling()
-    
-    # إبقاء البوت قيد التشغيل
-    updater.idle()
+    # بدء عملية استطلاع الرسائل (Polling) بشكل مستمر
+    print("البوت جاهز. بدء الاستطلاع...")
+    application.run_polling(poll_interval=3) 
 
 if __name__ == '__main__':
-    print("البوت قيد التشغيل...")
     main()
