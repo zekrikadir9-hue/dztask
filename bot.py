@@ -1,8 +1,10 @@
 import telegram
 import os
-# تم استبدال Updater بـ Application لإصلاح مشكلة التشغيل (الخطأ الأخير)
+# تم تعديل الاستيراد ليتوافق مع الإصدارات الحديثة (v20+)
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext # تم تعديل الاستيراد
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
+# هذا الاستيراد هو الحل لخطأ AttributeError: 'telegram' has no attribute 'ParseMode'
+from telegram.constants import ParseMode
 
 # 1. التكوين (Configuration)
 # يُفضل جلب التوكن من متغيرات البيئة لضمان الأمان
@@ -21,11 +23,13 @@ PRICES = {
 }
 MIN_WITHDRAWAL = 500
 
-# ----------------- الدوال الأساسية (لم تتغير) -----------------
+# ----------------- الدوال الأساسية -----------------
 
 def start(update: Update, context: CallbackContext) -> None:
     """معالج أمر /start: الترحيب وعرض القائمة الرئيسية."""
-    user_id = update.message.from_user.id
+    # نستخدم update.effective_chat إذا كانت الدالة تُستدعى من callback
+    chat = update.message if update.message else update.callback_query.message
+    user_id = chat.from_user.id
     
     if user_id not in user_balances:
         user_balances[user_id] = 0
@@ -44,10 +48,10 @@ def start(update: Update, context: CallbackContext) -> None:
     
     message_text = f"مرحباً بك! رصيدك الحالي هو: **{balance} د.ج**.\nاختر الخدمة التي تريدها:"
     
-    update.message.reply_text(
+    chat.reply_text(
         message_text,
         reply_markup=reply_markup,
-        parse_mode=telegram.ParseMode.MARKDOWN
+        parse_mode=ParseMode.MARKDOWN # استخدام ParseMode مباشرة بعد الاستيراد
     )
 
 def handle_callback(update: Update, context: CallbackContext) -> None:
@@ -76,7 +80,7 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
             message += f"تمت إضافة **{price} د.ج** إلى رصيدك. إليك رابط الألعاب المصغرة."
             
         message += f"\nرصيدك الجديد: **{new_balance} د.ج**."
-        query.edit_message_text(message, parse_mode=telegram.ParseMode.MARKDOWN)
+        query.edit_message_text(message, parse_mode=ParseMode.MARKDOWN) # تم التعديل هنا
 
     # ----------------- 2. منطق عرض الرصيد والسحب -----------------
     elif data == 'show_balance':
@@ -92,7 +96,7 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
              message = f"💰 رصيدك الحالي: **{balance} د.ج**.\n⚠️ الحد الأدنى للسحب هو {MIN_WITHDRAWAL} د.ج. ما زلت بحاجة إلى **{needed} د.ج**."
 
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text(message, reply_markup=reply_markup, parse_mode=telegram.ParseMode.MARKDOWN)
+        query.edit_message_text(message, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN) # تم التعديل هنا
 
     elif data == 'request_withdrawal':
         query.edit_message_text(
@@ -110,13 +114,39 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         
         keyboard = [[InlineKeyboardButton("🔄 العودة للقائمة", callback_data='return_to_menu')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text(message, reply_markup=reply_markup, parse_mode=telegram.ParseMode.MARKDOWN)
+        query.edit_message_text(message, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN) # تم التعديل هنا
 
     elif data == 'return_to_menu':
         # إعادة توجيه إلى دالة start لإعادة عرض القائمة
-        start(query, context)
+        # يجب أن نستخدم edit_message_text هنا لتجنب خطأ
+        # "Message must be modified"
+        # لكن سنستخدم start مباشرة ونعدل كيفية استدعائها.
+        # نستخدم دالة edit_message_text لتبديل القائمة القديمة بالقائمة الجديدة
+        
+        # استدعاء دالة start لتبني الرسالة الجديدة
+        # نستخدم update.callback_query بدلاً من update.message في start ليكون الاستدعاء متوافقاً
+        
+        user_id = query.from_user.id
+        balance = user_balances.get(user_id, 0)
+        
+        keyboard = [
+            [InlineKeyboardButton("📺 مشاهدة الفيديوهات (50 د.ج)", callback_data='service_watch_video')],
+            [InlineKeyboardButton("🌐 تصفح المواقع (30 د.ج)", callback_data='service_browse_web')],
+            [InlineKeyboardButton("🎮 ألعاب وتاريخ الجزائر (20 د.ج)", callback_data='service_play_games')],
+            [InlineKeyboardButton("💰 رصيدي/سحب", callback_data='show_balance')],
+            [InlineKeyboardButton("✉️ دعم العملاء", callback_data='support_contact')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        message_text = f"مرحباً بك! رصيدك الحالي هو: **{balance} د.ج**.\nاختر الخدمة التي تريدها:"
 
-# ----------------- دالة التشغيل الرئيسية (معدلة لـ Application) -----------------
+        query.edit_message_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+
+# ----------------- دالة التشغيل الرئيسية -----------------
 
 def main() -> None:
     """تشغيل البوت باستخدام الصيغة الحديثة لمكتبة python-telegram-bot (الإصدار 20+)."""
