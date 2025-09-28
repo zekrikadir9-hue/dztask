@@ -1,25 +1,39 @@
-import telegram
 import os
-# تم تعديل الاستيراد ليتوافق مع الإصدارات الحديثة (v20+)
+import logging
+import sys
+
+# استيرادات مكتبة تيليجرام
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
-# هذا الاستيراد هو الحل لخطأ AttributeError: 'telegram' has no attribute 'ParseMode'
-from telegram.constants import ParseMode
+from telegram.constants import ParseMode 
 
-# 1. التكوين (Configuration)
-# يُفضل جلب التوكن من متغيرات البيئة لضمان الأمان
+# ----------------- إعدادات Webhook -----------------
+# المنفذ الذي يوفره Render
+PORT = int(os.environ.get('PORT', 8080))
+# اسم خدمة Render (مثل dztask-3.onrender.com)
+RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME") 
+
+# ----------------- التكوين -----------------
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") 
 SUPPORT_EMAIL = "kaderezakariaa@gmail.com"
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# 2. قاعدة بيانات الأرصدة (مؤقتة - يرجى استبدالها بقاعدة بيانات دائمة عند النشر)
-# الصيغة: user_id: balance_in_dzd
+# التحقق من التوكن مبكراً والخروج إذا لم يتوفر
+if not TOKEN:
+    logger.error("خطأ فادح: لم يتم العثور على توكن البوت في متغيرات البيئة.")
+    # لا نستخدم sys.exit هنا لأن Gunicorn يحتاج إلى تحميل الكود أولاً، 
+    # سنعتمد على Gunicorn للفشل عند عدم وجود التطبيق
+    pass
+
+# 2. قاعدة بيانات الأرصدة (مؤقتة)
 user_balances = {} 
 
 # 3. الأسعار والحدود
 PRICES = {
-    'watch_video': 50,  # مشاهدة الفيديوهات (50 د.ج)
-    'browse_web': 30,   # تصفح المواقع (30 د.ج)
-    'play_games': 20    # الألعاب الصغيرة والتاريخ (20 د.ج)
+    'watch_video': 50,  
+    'browse_web': 30,   
+    'play_games': 20    
 }
 MIN_WITHDRAWAL = 500
 
@@ -27,7 +41,6 @@ MIN_WITHDRAWAL = 500
 
 def start(update: Update, context: CallbackContext) -> None:
     """معالج أمر /start: الترحيب وعرض القائمة الرئيسية."""
-    # نستخدم update.effective_chat إذا كانت الدالة تُستدعى من callback
     chat = update.message if update.message else update.callback_query.message
     user_id = chat.from_user.id
     
@@ -36,7 +49,6 @@ def start(update: Update, context: CallbackContext) -> None:
         
     balance = user_balances[user_id]
     
-    # بناء أزرار القائمة الرئيسية
     keyboard = [
         [InlineKeyboardButton("📺 مشاهدة الفيديوهات (50 د.ج)", callback_data='service_watch_video')],
         [InlineKeyboardButton("🌐 تصفح المواقع (30 د.ج)", callback_data='service_browse_web')],
@@ -51,7 +63,7 @@ def start(update: Update, context: CallbackContext) -> None:
     chat.reply_text(
         message_text,
         reply_markup=reply_markup,
-        parse_mode=ParseMode.MARKDOWN # استخدام ParseMode مباشرة بعد الاستيراد
+        parse_mode=ParseMode.MARKDOWN
     )
 
 def handle_callback(update: Update, context: CallbackContext) -> None:
@@ -62,7 +74,6 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
     user_id = query.from_user.id
     data = query.data
     
-    # ----------------- 1. منطق الخدمات وزيادة الرصيد -----------------
     if data.startswith('service_'):
         service_key = data.split('_')[1]
         price = PRICES.get(service_key, 0)
@@ -80,9 +91,8 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
             message += f"تمت إضافة **{price} د.ج** إلى رصيدك. إليك رابط الألعاب المصغرة."
             
         message += f"\nرصيدك الجديد: **{new_balance} د.ج**."
-        query.edit_message_text(message, parse_mode=ParseMode.MARKDOWN) # تم التعديل هنا
+        query.edit_message_text(message, parse_mode=ParseMode.MARKDOWN)
 
-    # ----------------- 2. منطق عرض الرصيد والسحب -----------------
     elif data == 'show_balance':
         balance = user_balances.get(user_id, 0)
         
@@ -96,14 +106,13 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
              message = f"💰 رصيدك الحالي: **{balance} د.ج**.\n⚠️ الحد الأدنى للسحب هو {MIN_WITHDRAWAL} د.ج. ما زلت بحاجة إلى **{needed} د.ج**."
 
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text(message, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN) # تم التعديل هنا
+        query.edit_message_text(message, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
 
     elif data == 'request_withdrawal':
         query.edit_message_text(
             "✅ تم تسجيل طلب السحب! سيتم التواصل معك قريباً على حسابك في تيليجرام لإتمام عملية الدفع."
         )
 
-    # ----------------- 3. منطق دعم العملاء والعودة -----------------
     elif data == 'support_contact':
         message = (
             f"📧 **دعم العملاء**:\n"
@@ -114,18 +123,9 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
         
         keyboard = [[InlineKeyboardButton("🔄 العودة للقائمة", callback_data='return_to_menu')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text(message, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN) # تم التعديل هنا
+        query.edit_message_text(message, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
 
     elif data == 'return_to_menu':
-        # إعادة توجيه إلى دالة start لإعادة عرض القائمة
-        # يجب أن نستخدم edit_message_text هنا لتجنب خطأ
-        # "Message must be modified"
-        # لكن سنستخدم start مباشرة ونعدل كيفية استدعائها.
-        # نستخدم دالة edit_message_text لتبديل القائمة القديمة بالقائمة الجديدة
-        
-        # استدعاء دالة start لتبني الرسالة الجديدة
-        # نستخدم update.callback_query بدلاً من update.message في start ليكون الاستدعاء متوافقاً
-        
         user_id = query.from_user.id
         balance = user_balances.get(user_id, 0)
         
@@ -145,26 +145,15 @@ def handle_callback(update: Update, context: CallbackContext) -> None:
             parse_mode=ParseMode.MARKDOWN
         )
 
+# ----------------- إعداد التطبيق للـ Webhook -----------------
 
-# ----------------- دالة التشغيل الرئيسية -----------------
+# إنشاء مثيل التطبيق كمتغير عام ليتم الوصول إليه بواسطة Gunicorn
+application = Application.builder().token(TOKEN).build()
 
-def main() -> None:
-    """تشغيل البوت باستخدام الصيغة الحديثة لمكتبة python-telegram-bot (الإصدار 20+)."""
-    
-    if not TOKEN:
-        print("خطأ فادح: لم يتم العثور على توكن البوت في متغيرات البيئة.")
-        return
+# ربط المعالجات بالأوامر والأزرار
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CallbackQueryHandler(handle_callback))
 
-    # استخدام Application.builder() هي الطريقة الصحيحة للتشغيل الحديثة
-    application = Application.builder().token(TOKEN).build()
-
-    # ربط المعالجات بالأوامر والأزرار
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(handle_callback))
-
-    # بدء عملية استطلاع الرسائل (Polling) بشكل مستمر
-    print("البوت جاهز. بدء الاستطلاع...")
-    application.run_polling(poll_interval=3) 
-
-if __name__ == '__main__':
-    main()
+# **ملاحظة:** تم حذف دالة main() و run_webhook() لأن Gunicorn
+# سيقوم بتشغيل التطبيق (application) مباشرةً على المنفذ، 
+# وهذا هو الإعداد الأبسط والأكثر موثوقية لـ Render.
