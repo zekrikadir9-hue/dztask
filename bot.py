@@ -29,7 +29,7 @@ def start(update: Update, context: CallbackContext) -> None:
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     update.message.reply_text(
-        f'مرحباً بك! رصيدك الحالي هو: **{balance} د.ج**.
+        f"مرحباً بك! رصيدك الحالي هو: **{balance} د.ج**.
 اختر الخدمة التي تريدها:',
         reply_markup=reply_markup,
         parse_mode=telegram.ParseMode.MARKDOWN
